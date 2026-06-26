@@ -613,6 +613,7 @@ function parseStorage(wb){
   const h=rows[hIdx];
   const plI=h.findIndex(c=>String(c).trim()==='Plant');
   const slocI=h.findIndex(c=>String(c).trim()==='SLOC'); // H001=saleable, else non-saleable
+  const batI=h.findIndex(c=>String(c).toUpperCase().includes('BATCH')); // BATCH NO -> Technology
   // Date columns: numeric header values 40000-60000
   const dcols=[];
   for(let i=0;i<h.length;i++){
@@ -634,12 +635,14 @@ function parseStorage(wb){
     const pl=String(rw[plI]||'').trim(); if(!['LKB','LCB'].includes(pl))continue;
     const sloc=String(rw[slocI]||'').trim();
     const isSal=sloc==='H001';
+    const tch=batI>=0?(techOf(rw[batI])||'Other'):'Other';
     for(const dc of dcols){
       const cnt=parseFloat(rw[dc.idx] instanceof Date?0:rw[dc.idx])||0; if(cnt<=0)continue;
       const dk=dc.ser+'|'+pl;
-      if(!dateTotals[dk])dateTotals[dk]={ser:dc.ser,pw:dc.pw,per:dc.per,plant:pl,sal:0,nsl:0};
+      if(!dateTotals[dk])dateTotals[dk]={ser:dc.ser,pw:dc.pw,per:dc.per,plant:pl,sal:0,nsl:0,tech:{}};
       if(isSal) dateTotals[dk].sal+=cnt;
       else dateTotals[dk].nsl+=cnt;
+      dateTotals[dk].tech[tch]=(dateTotals[dk].tech[tch]||0)+cnt; // pallets per technology per day
     }
   }
   // Step 2: group by P/W, average the daily totals
