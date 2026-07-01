@@ -1949,13 +1949,45 @@ if(typeof window.__SNAP__!=='undefined'&&window.__SNAP__){
 }
 
 // ── FIREBASE CLOUD SAVE / LOAD ─────────────────────────────────────────────
+// ── FIREBASE KEY SANITIZATION ──────────────────────────────────────────────
+// Firebase RTDB forbids '.', '#', '$', '/', '[', ']' in object keys.
+// Some data uses raw text (e.g. SKU descriptions like "TEMP Beef/Scallop 18kg")
+// as object keys, which can contain '/'. We reversibly encode/decode ONLY at
+// the Firebase read/write boundary so in-memory data (AFD, charts) is untouched.
+function fbEncodeKey(k){
+  return String(k).replace(/%/g,'%25').replace(/\./g,'%2E').replace(/#/g,'%23')
+    .replace(/\$/g,'%24').replace(/\//g,'%2F').replace(/\[/g,'%5B').replace(/\]/g,'%5D');
+}
+function fbDecodeKey(k){
+  return String(k).replace(/%2E/g,'.').replace(/%23/g,'#').replace(/%24/g,'$')
+    .replace(/%2F/g,'/').replace(/%5B/g,'[').replace(/%5D/g,']').replace(/%25/g,'%');
+}
+function fbSanitizeForSave(obj){
+  if(Array.isArray(obj))return obj.map(fbSanitizeForSave);
+  if(obj&&typeof obj==='object'){
+    const out={};
+    for(const k in obj)out[fbEncodeKey(k)]=fbSanitizeForSave(obj[k]);
+    return out;
+  }
+  return obj;
+}
+function fbRestoreFromLoad(obj){
+  if(Array.isArray(obj))return obj.map(fbRestoreFromLoad);
+  if(obj&&typeof obj==='object'){
+    const out={};
+    for(const k in obj)out[fbDecodeKey(k)]=fbRestoreFromLoad(obj[k]);
+    return out;
+  }
+  return obj;
+}
+
 async function saveToCloud(){
   if(typeof DB==='undefined'||!DB){toast('Cloud not available — Firebase did not load (check internet)','er',5000);return;}
   if(!Object.keys(AFD).length){toast('No data to save — upload files first','er');return;}
   const btn=document.getElementById('btn-cloud-save');
   btn.textContent='☁️ Saving…'; btn.disabled=true;
   try{
-    const payload={data:AFD, savedAt:new Date().toISOString(), version:'v22'};
+    const payload={data:fbSanitizeForSave(AFD), savedAt:new Date().toISOString(), version:'v22'};
     await DB.ref('dashboard/data').set(payload);
     toast('✓ Saved to cloud — TV will update automatically','ok',4000);
   }catch(e){
@@ -1972,7 +2004,7 @@ async function loadFromCloud(){
     if(!snap.exists()){return false;}
     const payload=snap.val();
     if(!payload||!payload.data){return false;}
-    AFD=payload.data;
+    AFD=fbRestoreFromLoad(payload.data);
     mergeRender();
     renderFL();
     const dt=payload.savedAt?new Date(payload.savedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'';
