@@ -458,9 +458,19 @@ const txtSerial=v=>{
   const n=parseFloat(s);return isFinite(n)?Math.floor(n):0;
 };
 // Batch No -> Technology (daily GR). Code sits after a 5-char prefix; match longest codes first.
-const TECH_MAP={PCHD:'PCH Dry1',PCHJ:'PCH Dry2',PCHP:'PCH Pouch',PCHS:'PCH TH01_C&T',PCHC:'PCH TH01_C&T',PCHT:'PCH TH16_C&T',CHB:'CHB Pouch','8WP03':'PCH Dry1','8WP04':'PCH Dry1'};
+const TECH_MAP={PCHD:'PCH Dry1',PCHJ:'PCH Dry2',PCHP:'PCH Pouch',PCHS:'PCH C&T',PCHC:'PCH C&T',PCHT:'PCH C&T Pockets',CHB:'CHB Pouch','8WP03':'PCH Dry1','8WP04':'PCH Dry1'};
 const TECH_CODES=Object.keys(TECH_MAP).sort((a,b)=>b.length-a.length);
 const techOf=b=>{b=String(b||'');for(const c of TECH_CODES)if(b.includes(c))return TECH_MAP[c];return '';};
+// Normalize technology labels read as raw text (e.g. weekly GR "Technology" column)
+// so formatting differences ("PCH Dry 1" vs "PCH Dry1", bare "CHB" vs "CHB Pouch")
+// don't split into duplicate pie slices from the BATCH-code-derived label (techOf above).
+// Only collapses known formatting variants; distinct categories (e.g. C&T sub-types) are left as-is.
+const TECH_LABEL_ALIASES={PCHDRY1:'PCH Dry1',PCHDRY2:'PCH Dry2',PCHPOUCH:'PCH Pouch',CHBPOUCH:'CHB Pouch',CHB:'CHB Pouch'};
+const normalizeTechLabel=raw=>{
+  const s=String(raw||'').trim(); if(!s)return s;
+  const key=s.replace(/\s+/g,'').toUpperCase();
+  return TECH_LABEL_ALIASES[key]||s;
+};
 // Float-preserving serial: keeps time fraction (for datetime arithmetic)
 const toSerialF=v=>{
   if(!v&&v!==0)return null;
@@ -520,7 +530,7 @@ function parseGRGI(wb){
       const lp=String(rw[lpI]||'').trim(); if(lp)d.palN++;
       const sch=String(rw[schI]||'').trim(); if(sch)d.schs.add(sch);
       d.dates.add(ser);
-      const tch=String(rw[techI]||'').trim();
+      const tch=normalizeTechLabel(rw[techI]);
       if(sch&&tch&&!d.schTech[sch])d.schTech[sch]=tch; // one technology per shipment (first seen)
     }
     // Also build daily breakdown: ser -> {plant -> set of SCH}
